@@ -9,9 +9,12 @@ import java.util.stream.Collectors;
 import javax.validation.Valid;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindingResult;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -20,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.formacionbdi.microservicios.app.cursos.services.CursoService;
 import com.formacionbdi.microservicios.app.models.cursos.entity.Curso;
+import com.formacionbdi.microservicios.app.models.cursos.entity.CursoAlumno;
 import com.formacionbdi.microservicios.commons.alumnos.models.entity.Alumno;
 import com.formacionbdi.microservicios.commons.controllers.CommonController;
 import com.formacionbdi.microservicios.commons.examenes.models.entity.Examen;
@@ -31,6 +35,78 @@ public class CursoController extends CommonController<Curso, CursoService>{
 	private String balanceadorTest;
 	
 	
+	
+	@DeleteMapping("/eliminar-alumno/{id}")
+	public ResponseEntity<?> eliminarCursoAlumnoPorId(@PathVariable Long id) {
+		
+		service.eliminarCursoAlumnoPorId(id);
+		return ResponseEntity.noContent().build();
+	}
+	
+	
+	@GetMapping
+	@Override
+	public ResponseEntity<?> listar(){
+		
+		List<Curso> cursos = ((List<Curso>) service.findAll()).stream().map(c->{
+			
+			c.getCursoAlumnos().forEach(ca->{
+				
+				Alumno alumno = new Alumno();
+				alumno.setId(ca.getAlumnoId());
+				c.addAlumno(alumno);
+			});
+			return c;
+			
+		}).collect(Collectors.toList());
+		
+		return ResponseEntity.ok().body(cursos);
+		
+	}
+	
+	@GetMapping("/pagina")
+	public ResponseEntity<?> listar(Pageable pageable){
+		
+		Page<Curso> cursos=service.findAll(pageable).map(c->{
+			
+			c.getCursoAlumnos().forEach(ca->{			
+				Alumno alumno = new Alumno();
+				alumno.setId(ca.getAlumnoId());
+				c.addAlumno(alumno);
+			});
+			return c;
+			
+			
+		});
+		
+		return ResponseEntity.ok().body(cursos);
+		
+	}
+	
+	@GetMapping("/{id}")
+	@Override
+	public ResponseEntity<?> ver(@PathVariable Long id){
+		
+		Optional<Curso> o = service.findById(id);
+
+		if (o.isEmpty()) {
+
+			return ResponseEntity.notFound().build(); // HTTP STATUS 404
+		}
+
+		Curso curso = o.get();
+
+		if (!curso.getCursoAlumnos().isEmpty()) {
+
+			List<Long> ids = curso.getCursoAlumnos().stream().map(ca -> ca.getAlumnoId()).collect(Collectors.toList());
+			List<Alumno> alumnos = (List<Alumno>) service.obtenerAlumnosPorCurso(ids);
+			curso.setAlumnos(alumnos);
+
+		}
+
+		return ResponseEntity.ok(curso); // HTTP STATUS 200
+	
+	}
 	
 	@GetMapping("balanceador-test")
 	public ResponseEntity<?> balanceadortest() {
@@ -75,7 +151,12 @@ public class CursoController extends CommonController<Curso, CursoService>{
 
 		Curso dbCurso = o.get();
 
-		alumnos.forEach(a -> dbCurso.addAlumno(a));
+		alumnos.forEach(a ->{ 
+			
+			CursoAlumno cursoAlumno=new CursoAlumno();
+			cursoAlumno.setAlumnoId(a.getId());
+			cursoAlumno.setCurso(dbCurso);			
+			dbCurso.addCursoAlumno(cursoAlumno);});
 
 		return ResponseEntity.status(HttpStatus.CREATED).body(this.service.save(dbCurso));
 
@@ -92,8 +173,10 @@ public class CursoController extends CommonController<Curso, CursoService>{
 		}
 
 		Curso dbCurso = o.get();
+		CursoAlumno cursoAlumno = new CursoAlumno();
+		cursoAlumno.setAlumnoId(alumno.getId());
+		dbCurso.removeCursoAlumno(cursoAlumno);
 
-		dbCurso.removeAlumno(alumno);
 
 		return ResponseEntity.status(HttpStatus.CREATED).body(this.service.save(dbCurso));
 
